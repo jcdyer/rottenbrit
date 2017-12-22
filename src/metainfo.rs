@@ -17,19 +17,24 @@ impl Sha1Hash {
 
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct MetaInfo<'a> {
-    #[serde(borrow)] pub announce: Cow<'a, str>,
+    #[serde(borrow)]
+    pub announce: Cow<'a, str>,
+    pub info: Info<'a>,
+
+    // Optional data
     #[serde(borrow)]
     #[serde(rename = "announce-list")]
-    pub announce_list: Vec<Cow<'a, str>>,
+    pub announce_list: Option<Vec<Vec<Cow<'a, str>>>>,
+    #[serde(borrow)]
+    #[serde(rename = "url-list")]
+    pub url_list: Option<Vec<Cow<'a, str>>>,
     #[serde(borrow)]
     #[serde(rename = "created by")]
     pub created_by: Option<Cow<'a, str>>,
     #[serde(borrow)]
-    #[serde(rename = "url-list")]
-    pub url_list: Option<Vec<Cow<'a, str>>>,
-    #[serde(borrow)] pub comment: Option<Cow<'a, str>>,
-    #[serde(rename = "creation date")] pub creation_date: Option<i64>,
-    pub info: MiInfo<'a>,
+    pub comment: Option<Cow<'a, str>>,
+    #[serde(rename = "creation date")]
+    pub creation_date: Option<i64>,
 }
 
 impl<'a> MetaInfo<'a> {
@@ -48,16 +53,20 @@ pub enum Info<'a> {
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct MiInfo<'a> {
     pub name: Cow<'a, str>,
-    #[serde(rename = "piece length")] pub piece_length: u64,
-    #[serde(deserialize_with = "pieces_from_bytes")] pub pieces: Vec<Sha1Hash>,
+    #[serde(rename = "piece length")]
+    pub piece_length: u64,
+    #[serde(deserialize_with = "pieces_from_bytes")]
+    pub pieces: Vec<Sha1Hash>,
     pub length: u64,
 }
 
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct MiMultiInfo<'a> {
     pub name: Cow<'a, str>,
-    #[serde(rename = "piece length")] pub piece_length: u64,
-    #[serde(deserialize_with = "pieces_from_bytes")] pub pieces: Vec<Sha1Hash>,
+    #[serde(rename = "piece length")]
+    pub piece_length: u64,
+    #[serde(deserialize_with = "pieces_from_bytes")]
+    pub pieces: Vec<Sha1Hash>,
     pub files: Vec<MiFileData<'a>>,
 }
 
@@ -77,7 +86,7 @@ where
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct MiFileData<'a> {
     length: u64,
-    path: Cow<'a, str>,
+    path: Vec<Cow<'a, str>>,
 }
 
 #[cfg(test)]
@@ -137,7 +146,8 @@ mod tests {
     #[test]
     fn into_metainfo() {
         let mut b = vec![];
-        let mut f = File::open("data/archlinux-2017.12.01-x86_64.iso.torrent").unwrap();
+        let filename = "data/archlinux-2017.12.01-x86_64.iso.torrent";
+        let mut f = File::open(&filename).unwrap();
         f.read_to_end(&mut b).expect("read");
         let mi = MetaInfo::from_bytes(&b).expect("deserialize");
         assert_eq!(mi.announce, "http://tracker.archlinux.org:6969/announce")
@@ -150,7 +160,7 @@ mod tests {
         f.read_to_end(&mut b).expect("read");
         let mi = MetaInfo::from_bytes(&b).expect("deserialize");
         println!("{:?}", mi);
-        assert_eq!(mi.announce, "http://tracker.archlinux.org:6969/announce")
+        assert_eq!(mi.announce, "http://tracker.bundles.bittorrent.com/announce")
     }
 
     #[test]
@@ -166,13 +176,15 @@ mod tests {
     #[test]
     fn examine_strvalue() {
         let mut b = vec![];
-        let filename = "data/These Systems Are Failing.torrent";
+        // let filename = "data/These Systems Are Failing.torrent";
+        let filename = "data/archlinux-2017.12.01-x86_64.iso.torrent";
         let mut f = File::open(&filename).unwrap();
         f.read_to_end(&mut b).unwrap();
         let v: Value = from_bytes(&b).unwrap();
         let str_value: StrValue = v.into();
         println!("{:?}", str_value);
-        assert!(false, "Success!");
+        // Uncomment the following to see the reserialized file
+        //assert!(false, "Success!");
 
     }
 }
