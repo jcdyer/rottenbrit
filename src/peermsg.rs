@@ -1,9 +1,9 @@
-fn push_u32(&mut vec, value: u32) {
+fn push_u32(vec: &mut Vec<u8>, value: u32) {
     // Redo with byteorder crate
-    vec.push((piece >> 24) as u8);
-    vec.push((piece >> 16) as u8);
-    vec.push((piece >> 8) as u8);
-    vec.push(piece as u8);
+    vec.push((value >> 24) as u8);
+    vec.push((value >> 16) as u8);
+    vec.push((value >> 8) as u8);
+    vec.push(value as u8);
 }
 
 // This should take a Peer and a Torrent object, and calculate the &[u8]s from them.
@@ -21,28 +21,28 @@ fn keepalive() -> Vec<u8> {
 }
 
 fn choke() -> Vec<u8> {
-    let msg = Vec::with_capacity(5);
+    let mut msg = Vec::with_capacity(5);
     push_u32(&mut msg, 1); // length
     msg.push(0); // choke id
     msg
 }
 
 fn unchoke() -> Vec<u8> {
-    let msg = Vec::with_capacity(5);
+    let mut msg = Vec::with_capacity(5);
     push_u32(&mut msg, 1); // length
     msg.push(1); // unchoke id
     msg
 }
 
 fn interested() -> Vec<u8> {
-    let msg = Vec::with_capacity(5);
+    let mut msg = Vec::with_capacity(5);
     push_u32(&mut msg, 1); // length
     msg.push(2); // interested id
     msg
 }
 
 fn not_interested() -> Vec<u8> {
-    let msg = Vec::with_capacity(5);
+    let mut msg = Vec::with_capacity(5);
     push_u32(&mut msg, 1); // length
     msg.push(3); // not interested id
     msg
@@ -72,8 +72,8 @@ fn request(piece: u32, begin: u32, length: u32) -> Vec<u8> {
 
 fn piece(piece: u32, begin: u32, data: &[u8]) -> Vec<u8> {
     let mut msg = Vec::with_capacity(13 + data.len());
-    push_u32(&mut msg, 9 + data.len()); // length
-    msg.push(7) // piece message id
+    push_u32(&mut msg, 9 + data.len() as u32); // length
+    msg.push(7); // piece message id
     push_u32(&mut msg, piece);
     push_u32(&mut msg, begin);
     msg.extend(data);
@@ -89,3 +89,22 @@ fn cancel(piece: u32, begin: u32, length: u32) -> Vec<u8> {
     push_u32(&mut msg, length);
     msg
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_piece() {
+        let msg = piece(0x12345678, 0, &[0x34; 0x4000][..]);
+        assert_eq!(
+            &msg[..16],
+            b"\0\0\x40\x09\x07\x12\x34\x56\x78\0\0\0\0\x34\x34\x34"
+        );
+        assert_eq!(
+            msg.len(),
+            0x4000 + 13,
+        )
+    }
+}
+
