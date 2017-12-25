@@ -1,3 +1,4 @@
+extern crate clap;
 extern crate serde_bencode;
 
 use std::collections::HashMap;
@@ -54,8 +55,19 @@ impl ::std::convert::From<Value> for StrValue {
 
 fn main() {
     let mut b = vec![];
+    let opts = clap::App::new("bparse")
+        .about("Parses bencode files into a readable json-like format")
+        .author("J. Cliff Dyer <jcd@sdf.org>")
+        .arg(
+            clap::Arg::with_name("file")
+                .required(true)
+                .index(1)
+        )
+        .get_matches();
+
+    let filename = opts.value_of("file").unwrap();
     // let filename = "data/These Systems Are Failing.torrent";
-    let filename = "data/archlinux-2017.12.01-x86_64.iso.torrent";
+    //let filename = "data/archlinux-2017.12.01-x86_64.iso.torrent";
     let mut f = File::open(&filename).unwrap();
     f.read_to_end(&mut b).unwrap();
     let v: Value = from_bytes(&b).unwrap();
