@@ -1,4 +1,8 @@
 use std::borrow::Cow;
+use std::io;
+use std::iter::Peekable;
+use std::str;
+
 use serde_bencode::de::from_bytes;
 use serde_bytes;
 
@@ -37,9 +41,96 @@ pub struct MetaInfo<'a> {
     pub creation_date: Option<i64>,
 }
 
+fn is_digit(n: u8) -> bool {
+    n >= b'0' && n <= b'9'
+}
+
+pub fn read_element<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+    let mut reads = Vec::with_capacity(16);
+    let initial = *source.peek().ok_or(io::Error::new(io::ErrorKind::Other, "source was empty"))?;
+    let result = match initial {
+        b'd' => read_dict(source),
+        b'l' => read_list(source),
+        b'i' => read_integer(source),
+        b'0' | b'1' | b'2' | b'3' | b'4' | b'5'
+            | b'6' | b'7' | b'8' | b'9' => read_bytes(source),
+        _ => Err(io::Error::new(io::ErrorKind::Other, "Invalid start character")),
+    }?;
+    reads.extend(result);
+    Ok(reads)
+}
+
+pub fn read_integer<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+    let mut buf = Vec::with_capacity(16);
+    while let Some(byte) = source.next() {
+        if byte <= b'0' || byte >= b'9' {
+            return Err(io::Error::new(io::ErrorKind::Other, "Non-numeric found in expected integer"));
+        }
+        buf.push(byte);
+        if byte == b'e' {
+            return Ok(vec![buf]);
+        }
+    }
+    Err(io::Error::new(io::ErrorKind::Other, "Integer is never closed"))
+}
+
+pub fn read_bytes<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+    //! Redo this to use Peekable<I>
+    let mut lengthbuf = Vec::with_capacity(10);
+    while source.peek().ok_or(io::Error::new(io::ErrorKind::Other, "No next"))? != &b':' {
+        let next = source.next().unwrap(); // Infallible due to peek() above.
+        if is_digit(next) {
+            lengthbuf.push(next);
+        } else {
+            return Err(io::Error::new(io::ErrorKind::Other, "Not a number"));
+        }
+    }
+    let colon = vec![source.next().ok_or(io::Error::new(io::ErrorKind::Other, "No next"))?];
+    // Safe due to is_digit() check above
+    let bytes_length = unsafe { str::from_utf8_unchecked(&lengthbuf) }.parse().unwrap();  
+    let mut data = Vec::with_capacity(bytes_length);
+    for _ in 0..bytes_length {
+        data.push(source.next().ok_or(io::Error::new(io::ErrorKind::Other, "No next"))?);
+    }
+    Ok(vec![lengthbuf, colon, data])
+}
+
+pub fn read_list<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+    let mut buf = Vec::with_capacity(1024);
+    let l = source.next().ok_or(io::Error::new(io::ErrorKind::Other, "No data"))?;
+    if l != b'l' {
+        Err(io::Error::new(io::ErrorKind::Other, "Didn't find leading `l`"))
+    } else {
+        buf.push(vec![l]);
+        while source.peek().ok_or(io::Error::new(io::ErrorKind::Other, "List didn't end"))? != &b'e' {
+            buf.extend(read_element(source)?);
+        }
+        Ok(buf)
+    }
+}
+
+pub fn read_dict<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+    let mut buf = Vec::with_capacity(1024);
+    let d = source.next().ok_or(io::Error::new(io::ErrorKind::Other, "No data"))?;
+    if d != b'd' {
+        Err(io::Error::new(io::ErrorKind::Other, "Didn't find leading `d`"))
+    } else {
+        buf.push(vec![d]);
+        while source.peek().ok_or(io::Error::new(io::ErrorKind::Other, "Dict didn't end"))? != &b'e' {
+            buf.extend(read_bytes(source)?);
+            buf.extend(read_element(source)?);
+        }
+        Ok(buf)
+    }
+}
+
 impl<'a> MetaInfo<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> Option<MetaInfo> {
         from_bytes(bytes).ok()
+    }
+
+    pub fn infohash(&self) -> Sha1Hash {
+        unimplemented!();
     }
 }
 

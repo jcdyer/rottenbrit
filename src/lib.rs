@@ -21,6 +21,26 @@ use mio::net::{TcpListener, TcpStream};
 // for which socket.
 const LISTENER: Token = Token(0);
 
+enum State {
+    New,
+    Connected,
+}
+
+struct Piece;
+
+struct Torrent<'a> {
+    metainfo: metainfo::MetaInfo<'a>,
+    pieces: Vec<Piece>,
+    peers: Vec<Peer>
+}
+
+struct Peer {
+    peer_id: Vec<u8>,
+    choked: bool,
+    interested: bool,
+    bitfield: Vec<u8>,
+}
+
 pub fn serve<T: Into<SocketAddr>>(addr: T) -> Result<(), Box<Error>> {
     let addr = addr.into();
 
