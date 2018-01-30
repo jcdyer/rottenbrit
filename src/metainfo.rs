@@ -17,6 +17,14 @@ impl Sha1Hash {
             None
         }
     }
+
+    pub fn to_vec(self) -> Vec<u8> {
+        self.0
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
 }
 
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -45,39 +53,52 @@ fn is_digit(n: u8) -> bool {
     n >= b'0' && n <= b'9'
 }
 
-pub fn read_element<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+pub fn read_element<I: Iterator<Item = u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
     let mut reads = Vec::with_capacity(16);
-    let initial = *source.peek().ok_or(io::Error::new(io::ErrorKind::Other, "source was empty"))?;
+    let initial = *source
+        .peek()
+        .ok_or(io::Error::new(io::ErrorKind::Other, "source was empty"))?;
     let result = match initial {
         b'd' => read_dict(source),
         b'l' => read_list(source),
         b'i' => read_integer(source),
-        b'0' | b'1' | b'2' | b'3' | b'4' | b'5'
-            | b'6' | b'7' | b'8' | b'9' => read_bytes(source),
-        _ => Err(io::Error::new(io::ErrorKind::Other, "Invalid start character")),
+        b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' | b'8' | b'9' => read_bytes(source),
+        _ => Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Invalid start character",
+        )),
     }?;
     reads.extend(result);
     Ok(reads)
 }
 
-pub fn read_integer<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+pub fn read_integer<I: Iterator<Item = u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
     let mut buf = Vec::with_capacity(16);
     while let Some(byte) = source.next() {
         if byte <= b'0' || byte >= b'9' {
-            return Err(io::Error::new(io::ErrorKind::Other, "Non-numeric found in expected integer"));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Non-numeric found in expected integer",
+            ));
         }
         buf.push(byte);
         if byte == b'e' {
             return Ok(vec![buf]);
         }
     }
-    Err(io::Error::new(io::ErrorKind::Other, "Integer is never closed"))
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "Integer is never closed",
+    ))
 }
 
-pub fn read_bytes<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+pub fn read_bytes<I: Iterator<Item = u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
     //! Redo this to use Peekable<I>
     let mut lengthbuf = Vec::with_capacity(10);
-    while source.peek().ok_or(io::Error::new(io::ErrorKind::Other, "No next"))? != &b':' {
+    while source
+        .peek()
+        .ok_or(io::Error::new(io::ErrorKind::Other, "No next"))? != &b':'
+    {
         let next = source.next().unwrap(); // Infallible due to peek() above.
         if is_digit(next) {
             lengthbuf.push(next);
@@ -85,38 +106,62 @@ pub fn read_bytes<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<
             return Err(io::Error::new(io::ErrorKind::Other, "Not a number"));
         }
     }
-    let colon = vec![source.next().ok_or(io::Error::new(io::ErrorKind::Other, "No next"))?];
+    let colon = vec![
+        source
+            .next()
+            .ok_or(io::Error::new(io::ErrorKind::Other, "No next"))?,
+    ];
     // Safe due to is_digit() check above
-    let bytes_length = unsafe { str::from_utf8_unchecked(&lengthbuf) }.parse().unwrap();  
+    let bytes_length = unsafe { str::from_utf8_unchecked(&lengthbuf) }
+        .parse()
+        .unwrap();
     let mut data = Vec::with_capacity(bytes_length);
     for _ in 0..bytes_length {
-        data.push(source.next().ok_or(io::Error::new(io::ErrorKind::Other, "No next"))?);
+        data.push(source
+            .next()
+            .ok_or(io::Error::new(io::ErrorKind::Other, "No next"))?);
     }
     Ok(vec![lengthbuf, colon, data])
 }
 
-pub fn read_list<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+pub fn read_list<I: Iterator<Item = u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
     let mut buf = Vec::with_capacity(1024);
-    let l = source.next().ok_or(io::Error::new(io::ErrorKind::Other, "No data"))?;
+    let l = source
+        .next()
+        .ok_or(io::Error::new(io::ErrorKind::Other, "No data"))?;
     if l != b'l' {
-        Err(io::Error::new(io::ErrorKind::Other, "Didn't find leading `l`"))
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Didn't find leading `l`",
+        ))
     } else {
         buf.push(vec![l]);
-        while source.peek().ok_or(io::Error::new(io::ErrorKind::Other, "List didn't end"))? != &b'e' {
+        while source
+            .peek()
+            .ok_or(io::Error::new(io::ErrorKind::Other, "List didn't end"))? != &b'e'
+        {
             buf.extend(read_element(source)?);
         }
         Ok(buf)
     }
 }
 
-pub fn read_dict<I: Iterator<Item=u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
+pub fn read_dict<I: Iterator<Item = u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
     let mut buf = Vec::with_capacity(1024);
-    let d = source.next().ok_or(io::Error::new(io::ErrorKind::Other, "No data"))?;
+    let d = source
+        .next()
+        .ok_or(io::Error::new(io::ErrorKind::Other, "No data"))?;
     if d != b'd' {
-        Err(io::Error::new(io::ErrorKind::Other, "Didn't find leading `d`"))
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Didn't find leading `d`",
+        ))
     } else {
         buf.push(vec![d]);
-        while source.peek().ok_or(io::Error::new(io::ErrorKind::Other, "Dict didn't end"))? != &b'e' {
+        while source
+            .peek()
+            .ok_or(io::Error::new(io::ErrorKind::Other, "Dict didn't end"))? != &b'e'
+        {
             buf.extend(read_bytes(source)?);
             buf.extend(read_element(source)?);
         }
@@ -129,8 +174,8 @@ impl<'a> MetaInfo<'a> {
         from_bytes(bytes).ok()
     }
 
-    pub fn infohash(&self) -> Sha1Hash {
-        unimplemented!();
+    pub fn info_hash(&self) -> Sha1Hash {
+        Sha1Hash::new(vec![0; 20]).unwrap()
     }
 }
 
@@ -202,7 +247,10 @@ mod tests {
         let mut f = File::open("data/These Systems Are Failing.torrent").unwrap();
         f.read_to_end(&mut b).expect("read");
         let mi = MetaInfo::from_bytes(&b).expect("deserialize");
-        assert_eq!(mi.announce, "http://tracker.bundles.bittorrent.com/announce")
+        assert_eq!(
+            mi.announce,
+            "http://tracker.bundles.bittorrent.com/announce"
+        )
     }
 
     #[test]
