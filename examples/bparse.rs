@@ -18,16 +18,11 @@ enum StrValue {
 impl ::std::fmt::Debug for StrValue {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         match *self {
-            StrValue::Dict(ref map) =>
-                write!(f, "{:?}", map),
-            StrValue::List(ref vec) =>
-                write!(f, "{:?}", vec),
-            StrValue::Str(ref s) =>
-                write!(f, "{:?}", s),
-            StrValue::Int(ref i) =>
-                write!(f, "{:?}", i),
+            StrValue::Dict(ref map) => write!(f, "{:?}", map),
+            StrValue::List(ref vec) => write!(f, "{:?}", vec),
+            StrValue::Str(ref s) => write!(f, "{:?}", s),
+            StrValue::Int(ref i) => write!(f, "{:?}", i),
         }
-
     }
 }
 impl ::std::convert::From<Value> for StrValue {
@@ -47,7 +42,7 @@ impl ::std::convert::From<Value> for StrValue {
                 let length = b.len();
                 let s = String::from_utf8(b).unwrap_or(format!("<bin:{}>", length));
                 StrValue::Str(s)
-            },
+            }
             Value::Int(i) => StrValue::Int(i),
         }
     }
@@ -58,11 +53,7 @@ fn main() {
     let opts = clap::App::new("bparse")
         .about("Parses bencode files into a readable json-like format")
         .author("J. Cliff Dyer <jcd@sdf.org>")
-        .arg(
-            clap::Arg::with_name("file")
-                .required(true)
-                .index(1)
-        )
+        .arg(clap::Arg::with_name("file").required(true).index(1))
         .get_matches();
 
     let filename = opts.value_of("file").unwrap();
@@ -75,5 +66,4 @@ fn main() {
     println!("{:?}", str_value);
     // Uncomment the following to see the reserialized file
     //assert!(false, "Success!");
-
 }

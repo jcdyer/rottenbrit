@@ -9,24 +9,27 @@ use std::io::Read;
 
 use url::percent_encoding::{percent_encode as pe, DEFAULT_ENCODE_SET};
 
-use rottenbrit::metainfo::{MetaInfo};
+use rottenbrit::metainfo::{MetaInfo, get_info_hash};
+
 
 fn percent_encode(input: &[u8]) -> String {
     pe(input, DEFAULT_ENCODE_SET).collect()
 }
+
 
 struct TrackerRequest {
     info_hash: Vec<u8>,
     peer_id: Vec<u8>,
     ip: Option<String>,
     port: u16,
-    uploaded: usize,
-    downloaded: usize,
-    left: usize,
+    uploaded: u64,
+    downloaded: u64,
+    left: u64,
     event: Option<String>,
 }
 
-fn get_tracker(info_hash: Vec<u8>, url: &str, size: usize) -> Option<Vec<u8>> {
+
+fn get_tracker(info_hash: Vec<u8>, url: &str, size: u64) -> Result<Vec<u8>, Box<::std::error::Error>> {
     let tr = TrackerRequest {
         info_hash,
         peer_id: b"rbxxxyyyyyzzzzz00000".to_vec(),
@@ -48,12 +51,13 @@ fn get_tracker(info_hash: Vec<u8>, url: &str, size: usize) -> Option<Vec<u8>> {
         tr.left,
         tr.event.unwrap(),
     );
-    reqwest::get(&url).ok().and_then(|mut response| {
+    println!("Reqwesting URL: {}", url);
+    Ok(reqwest::get(&url).and_then(|mut response| {
         println!("Got a {} response", response.status());
         let mut buf = Vec::new();
-        response.read_to_end(&mut buf).ok()?;
-        Some(buf)
-    })
+        response.read_to_end(&mut buf).expect("Reading response");
+        Ok(buf)
+    })?)
 }
 
 fn main() {
@@ -69,11 +73,12 @@ fn main() {
         .get_matches();
 
     let mut tordata = Vec::new(); // Get file size
-    let mut f =
-        std::fs::File::open(opts.value_of("torrent").unwrap()).expect("could not open file");
-    f.read_to_end(&mut tordata);
+    let mut f = std::fs::File::open(opts.value_of("torrent").unwrap())
+        .expect("open torrent");
+    f.read_to_end(&mut tordata).expect("read torrent");
+    let info_hash = get_info_hash(tordata.clone()).expect("info hash");
     let mi = MetaInfo::from_bytes(&tordata).expect("parsing torrent file");
     println!("Got torrent: {:?}", &mi.announce);
-    let bytes = get_tracker(mi.info_hash().to_vec(), &mi.announce, 0);
+    let bytes = get_tracker(info_hash.digest().bytes().to_vec(), &mi.announce, mi.info.length());
     println!("{}", ::std::string::String::from_utf8_lossy(&bytes.unwrap()));
 }

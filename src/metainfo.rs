@@ -5,6 +5,7 @@ use std::str;
 
 use serde_bencode::de::from_bytes;
 use serde_bytes;
+use sha1::Sha1;
 
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Sha1Hash(Vec<u8>);
@@ -49,9 +50,44 @@ pub struct MetaInfo<'a> {
     pub creation_date: Option<i64>,
 }
 
+pub fn get_info_hash(source: Vec<u8>) -> io::Result<Sha1> {
+
+    value_in_dict(source, b"info").map(|bytes| {
+        let mut sha = Sha1::new();
+        sha.update(&bytes);
+        sha
+    })
+}
+
+pub fn value_in_dict(source: Vec<u8>, key: &[u8]) -> io::Result<Vec<u8>> {
+    let mut iter = source.into_iter().peekable();
+    if iter.next() != Some(b'd') {
+        return Err(io::Error::new(io::ErrorKind::Other, "Not a dict"));
+    }
+    let mut found = read_bytes(&mut iter)?;
+    //let key = key.to_owned();
+    while found.get(2) != Some(&key.to_owned()) {
+        read_element(&mut iter)?;
+        if iter.peek() == Some(&b'e') {
+            return Err(io::Error::new(
+                io::ErrorKind::Other, "Key not found"
+            ))
+        }
+        found = read_bytes(&mut iter)?;
+    }
+    let chunks = read_element(&mut iter)?;
+    let capacity = chunks.iter().fold(0, |sum, chunk| sum + chunk.len());
+    let mut out = Vec::with_capacity(capacity);
+    for chunk in chunks {
+        out.extend(chunk);
+    }
+    Ok(out)
+}
+
 fn is_digit(n: u8) -> bool {
     n >= b'0' && n <= b'9'
 }
+
 
 pub fn read_element<I: Iterator<Item = u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
     let mut reads = Vec::with_capacity(16);
@@ -74,16 +110,19 @@ pub fn read_element<I: Iterator<Item = u8>>(source: &mut Peekable<I>) -> io::Res
 
 pub fn read_integer<I: Iterator<Item = u8>>(source: &mut Peekable<I>) -> io::Result<Vec<Vec<u8>>> {
     let mut buf = Vec::with_capacity(16);
+    let i = source.next().and_then(|c| if c != b'i' { None } else { Some(c) })
+        .ok_or(io::Error::new(io::ErrorKind::Other, "integer didn't start with i"))?;
+    buf.push(i);
     while let Some(byte) = source.next() {
-        if byte <= b'0' || byte >= b'9' {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Non-numeric found in expected integer",
-            ));
-        }
         buf.push(byte);
         if byte == b'e' {
             return Ok(vec![buf]);
+        }
+        if byte < b'0' || byte > b'9' {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Non-numeric {} found in expected integer", byte),
+            ));
         }
     }
     Err(io::Error::new(
@@ -174,9 +213,6 @@ impl<'a> MetaInfo<'a> {
         from_bytes(bytes).ok()
     }
 
-    pub fn info_hash(&self) -> Sha1Hash {
-        Sha1Hash::new(vec![0; 20]).unwrap()
-    }
 }
 
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -186,6 +222,14 @@ pub enum Info<'a> {
     MiMultiInfo(MiMultiInfo<'a>),
 }
 
+impl <'a> Info<'a> {
+    pub fn length(&self) -> u64 {
+        match *self {
+            Info::MiInfo(ref info) => info.length,
+            Info::MiMultiInfo(ref info) => info.files.iter().fold(0, |sum, filedata| sum + filedata.length),
+        }
+    }
+}
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct MiInfo<'a> {
     pub name: Cow<'a, str>,

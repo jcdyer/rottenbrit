@@ -101,10 +101,6 @@ mod test {
             &msg[..16],
             b"\0\0\x40\x09\x07\x12\x34\x56\x78\0\0\0\0\x34\x34\x34"
         );
-        assert_eq!(
-            msg.len(),
-            0x4000 + 13,
-        )
+        assert_eq!(msg.len(), 0x4000 + 13,)
     }
 }
-
